@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Monitor - Tipo de Cambio</title>
+    <!-- Incluir la libreria Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <style>
+
+        .refreshButton {
+
+            padding: 5px;
+            vertical-align: middle;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+
+        }
+
+    </style>
+
+<body onload="obtenerTipoDeCambio()">
+    <!-- Crear un elemento canvas para el grafico -->
+    <canvas id="exchangeRateChart" width="400" height="200"></canvas>
+
+    <!-- <button id="reload" class="refreshButton">
+        <span><img src="/img/refresh.svg" width="16" height="16"></span>
+        Volver a obtener dato para hoy</button> -->
+
+    <script>
+
+// pruebas
+// let hhh = [{"date":"2024-09-06","buy":"512","sell":"525"},
+// {"date":"2024-09-07","buy":"513","sell":"526"},
+// {"date":"2024-09-08","buy":"514","sell":"528"},];
+// let hhh = [{"buy":"513","sell":"527","date":"2024-09-09"}];
+// localStorage.setItem("historial_exCR", JSON.stringify(hhh));
+
+        const pais = 'CR';
+        const historyKey = "historial_ex" + pais;
+
+        // Configurar y mostrar el grafico
+        var ctx = document.getElementById('exchangeRateChart').getContext('2d');
+
+        var exchangeRateChart = new Chart(ctx, {
+            type: 'line', // Tipo de grafico: 'line'
+            data: {
+                labels: [], // Etiquetas del eje X (fechas)
+                datasets: [
+                    {
+                        label: 'Compra',
+                        data: [], // Datos del grafico (valores de compra)
+                        borderColor: 'rgba(75, 192, 192, 1)',
+                        backgroundColor: 'rgba(75, 192, 192, 0.2)',
+                        fill: false
+                    },
+                    {
+                        label: 'Venta',
+                        data: [], // Datos del grafico (valores de venta)
+                        borderColor: 'rgba(255, 99, 132, 1)',
+                        backgroundColor: 'rgba(255, 99, 132, 0.2)',
+                        fill: false
+                    }
+                ]
+            },
+            options: {
+                scales: {
+                    x: {
+                        title: {
+                            display: true,
+                            text: 'Fecha'
+                        }
+                    },
+                    y: {
+                        beginAtZero: false,
+                        title: {
+                            display: true,
+                            text: 'Valor'
+                        }
+                    }
+                }
+            }
+        });
+
+        // Funcian para obtener el tipo de cambio y actualizar el grafico
+
+        function obtenerTipoDeCambio() {
+            actualizarTabla(null);
+            const lastDate = localStorage.getItem("todaysDate");
+            const todaysDate = new Date().toISOString().split('T')[0];
+
+            if (lastDate !== todaysDate) {
+
+                localStorage.setItem("todaysDate", todaysDate);
+
+                fetch('https://www1.sucursalelectronica.com/ebac/common/GetExchangeRateInfo.go')
+                    .then(response => response.json())
+                    .then(data => {
+                        const responseData = data.USD.filter(x => x.country_code === pais)[0];
+                        const theExchangeRate = {
+                            "buy": responseData.buy,
+                            "sell": responseData.sell,
+                            "date": todaysDate
+                        };
+                        anadirAlHistorial(theExchangeRate);
+                    })
+                    .catch(error => console.error('Error al obtener el tipo de cambio:', error));
+                //   });
+            }
+        }
+
+
+
+        // document.getElementById('reload').addEventListener('click', function () {
+        //     localStorage.setItem("todaysDate", "xxx");
+        //     obtenerTipoDeCambio();
+        // });
+
+
+
+
+
+        function actualizarTabla(theExchangeRate) {
+
+            const addValueToChart = (theExchangeRate) => {
+
+                // avanzar solo si los labels no contienen el theExchangeRate.date
+                if (exchangeRateChart.data.labels.includes(theExchangeRate.date)) {
+                    return;
+                }
+
+                exchangeRateChart.data.labels.push(theExchangeRate.date);
+                exchangeRateChart.data.datasets[0].data.push(theExchangeRate.buy);
+                exchangeRateChart.data.datasets[1].data.push(theExchangeRate.sell);
+                exchangeRateChart.update();
+            };
+
+            if (theExchangeRate && exchangeRateChart.data.labels.length > 0) {
+                addValueToChart(theExchangeRate);
+            } else {
+                const historial = JSON.parse(localStorage.getItem(historyKey)) || [];
+                historial.forEach(item => {
+                    // Agregar los valores al grafico
+                    addValueToChart(item);
+                });
+            }
+
+        }
+
+        function anadirAlHistorial(theExchangeRate = {}) {
+            const historial = JSON.parse(localStorage.getItem(historyKey)) || [];
+
+            // validar que historial no tenga un elemento con la misma fecha
+            const existe = historial.some(item => item.date === theExchangeRate.date);
+            if (existe) { return; }
+
+            historial.push(theExchangeRate);
+            localStorage.setItem(historyKey, JSON.stringify(historial));
+            actualizarTabla(theExchangeRate);
+        }
+
+    </script>
+</body>
+
+</html>

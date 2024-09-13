@@ -1,0 +1,23 @@
+{
+  "name": "tracking",
+  "version": "1.0.0",
+  "description": "Tracking de Valores Economicos",
+  "main": "/public/index.html",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "serve ./public"
+  },
+  "keywords": [
+    "Tracking",
+    "Exchange",
+    "Rate",
+    "Costa",
+    "Rica",
+    "Graph"
+  ],
+  "author": "j0sevargas",
+  "license": "ISC",
+  "dependencies": {
+    "serve": "^14.2.3"
+  }
+}
