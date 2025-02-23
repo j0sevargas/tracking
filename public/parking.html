@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Parking Tracking</title>
+    <!-- Incluir la libreria Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+
+<body>
+    <!-- Crear un elemento canvas para el grafico -->
+    <canvas id="parkingChart" width="400" height="200"></canvas>
+
+    <!-- Campos de entrada para email y contrasena -->
+    <input id="corporateparking_parso_cr_1" type="email">
+    <input id="corporateparking_parso_cr_2" type="password">
+    <button id="refreshButton">Autenticar</button>
+    <span id="validCredentialString"> </span>
+
+    <div id="loadingTasks">
+        <ul id="list"></ul>
+    </div>
+
+    <script>
+        // Funcion para obtener las fechas de los proximos 10 dias habiles a partir de mañana
+        function getNextWeekdays() {
+            const dates = [];
+            
+            // obtener la fecha de hoy a las 8 am
+            const today = new Date();
+            today.setHours(8, 0, 0, 0);
+
+            while (dates.length < 10) {
+                today.setDate(today.getDate() + 1);
+
+                if (today.getDay() !== 0 && today.getDay() !== 6) { // Excluir fines de semana
+                    dates.push(new Date(today));
+                }
+            }
+            return dates;
+        }
+
+        // Funcion para formatear la fecha en el formato requerido por la API
+        function formatDate(date) {
+            return date.toISOString().split('T')[0] + 'T08:00:00.000Z';
+        }
+
+        // obtiene la etiqueta de la columna en formato Dia de la semana y numero de dia
+        function getColumnLabel(date){
+            const days = ['Domingo','Lunes','Martes','Miercoles','Jueves','Viernes','Sabado'];
+            return days[date.getDay()] + ' ' + date.getDate();            
+        }
+
+
+        // Funcion para autenticar al usuario y almacenar los tokens
+        async function authenticate(email, password) {
+
+            // agregar item a la lista para indicar que esta haciendo login
+            const item = document.createElement('li');
+            item.textContent = 'Iniciando sesion con el usuario ' + email + '...';
+            document.getElementById('list').appendChild(item);
+
+            const response = await fetch('https://baclatam.corporateparking.parso.cr/api/auth/sign_in', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ email: email, password: password })
+            });
+            const jsonData = await response.json();
+
+            const info = {
+                'access-token': jsonData.tokens[0].token["access-token"],
+                'token-type': jsonData.tokens[0].token["token-type"],
+                'client': jsonData.tokens[0].token["client"],
+                'uid': jsonData.tokens[0].token["uid"],
+                'expiry': jsonData.tokens[0].token["expiry"]
+            };
+            localStorage.setItem('parso_token', JSON.stringify(info));
+        }
+
+        // Funcion para obtener los datos de disponibilidad de parqueos
+        async function getParkingData() {
+            const dates = getNextWeekdays();
+            const parkingData = [];
+            const tokens = JSON.parse(localStorage.getItem('parso_token'));
+            for (const date of dates) {
+                const formattedDate = formatDate(date);
+
+                // crear item en la lista para indicar que esta cargando la data del dia
+                const item = document.createElement('li');
+                item.textContent = 'Cargando datos para el dia '+ getColumnLabel(date) +' (' + date.toISOString().split('T')[0] + ')';
+                document.getElementById('list').appendChild(item);
+
+
+                const response = await fetch(`https://baclatam.corporateparking.parso.cr/api/parking_spaces/availability?start_date=${formattedDate}&end_date=${formattedDate}&entry_time=08:00`, {
+                    headers: {
+                        'access-token': tokens['access-token'],
+                        'token-type': tokens['token-type'],
+                        'client': tokens['client'],
+                        'uid': tokens['uid'],
+                        'expiry': tokens['expiry']
+                    }
+                });
+                const data = await response.json();
+
+                if (data.success === true) {
+                    const lots = [];
+                    data.availables[0].availability.forEach(element => {
+                        lots[element.parking_lot_id] = element;
+                    });
+
+
+                    parkingData.push({
+                        label: getColumnLabel(date),
+                        date: data.availables[0].date, 
+                        lots: lots
+                    });
+                }
+
+
+            }
+            return parkingData;
+        }
+
+        // Funcion para configurar y mostrar el grafico
+        async function renderChart() {
+
+
+            const parkingData = await getParkingData();
+
+
+const labels = parkingData.map(item => item.label);
+
+
+const colors = ['rgba(25, 9, 13, 0.2)', 'rgba(255, 99, 132, 0.2)', 'rgba(54, 162, 235, 0.2)', 'rgba(255, 206, 86, 0.2)', 'rgba(33, 192, 192, 0.2)', 'rgba(153, 102, 255, 0.2)', 'rgba(255, 159, 64, 0.2)', 'rgba(100, 100, 100, 0.2)', 'rgba(190, 32, 23, 0.2)', 'rgba(66, 11, 11, 0.2)', 'rgba(75, 192, 1, 0.2)'];
+
+
+
+// Crear definicion de los datasets
+const firstElement = parkingData[0];
+const datasets = [];
+
+for (const lot of Object.values(firstElement.lots)) {
+
+
+    datasets.push({
+        id: lot.parking_lot_id,
+        label: lot.name,
+        data: [],
+        backgroundColor: colors[lot.parking_lot_id],
+        borderColor: 'rgba(0, 0, 0, 1)',
+        borderWidth: 1
+    });
+}
+
+
+ 
+// Alimentar cada dataset con datos para cada dia de la semana
+parkingData.forEach(item => {
+
+    //buscar el item dentro del arreglo que tenga el label que corresponde al item
+
+    for (let i = 0; i < datasets.length; i++) {
+        const data = item.lots[datasets[i].id];
+        if (data) {
+            datasets[i].data.push(data.total);
+        }
+    }
+
+
+});
+
+
+            const ctx = document.getElementById('parkingChart').getContext('2d');
+            new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: datasets
+                },
+                options: {
+                    scales: {
+                        x: {
+                            stacked: true
+                        },
+                        y: {
+                            beginAtZero: true,
+                            stacked: true
+                        }
+                    }
+                }
+            });
+        }
+
+        function credentialsValid() {
+            const parso_token = localStorage.getItem('parso_token');
+            if (parso_token) {
+                const credentials = JSON.parse(parso_token);
+
+
+                //Obtener fecha actual en formato epoch
+                const fechaActual = Math.floor(new Date().getTime() / 1000);
+
+
+                if (parseInt(credentials.expiry) > fechaActual) {
+                    return true;
+                } else {
+                    localStorage.removeItem('parso_token');
+                    return false;
+                }
+
+            } else {
+                return false;
+            }
+        }
+
+
+        // Funcion para manejar el clic en el boton de refrescar
+        document.getElementById('refreshButton').addEventListener('click', async () => {
+            const email = document.getElementById('corporateparking_parso_cr_1').value;
+            const password = document.getElementById('corporateparking_parso_cr_2').value;
+            if (!credentialsValid()) {
+                await authenticate(email, password);
+            }
+            renderChart();
+        });
+
+        // Renderizar el grafico al cargar la pagina si ya esta autenticado
+        if (credentialsValid()) {
+
+            document.getElementById('refreshButton').enabled = false;
+            document.getElementById('validCredentialString').innerText = 'Credenciales validas hasta ' + new Date(parseInt(JSON.parse(localStorage.getItem('parso_token')).expiry) * 1000).toLocaleString();
+
+            
+            renderChart();
+
+
+        }
+    </script>
+</body>
+
+</html>
