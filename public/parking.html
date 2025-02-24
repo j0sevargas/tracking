@@ -7,27 +7,103 @@
     <title>Parking Tracking</title>
     <!-- Incluir la libreria Chart.js -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="icon" type="image/svg+xml" href="img/parking.svg">
+    
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #f0f0f0;
+        }
+
+        #chart {
+            margin: 20px;
+            padding: 20px;
+            background-color: white;
+            border-radius: 10px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+        }
+
+        #loginForm {
+            margin: 20px;
+            padding: 20px;
+            background-color: white;
+            border-radius: 10px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+        }
+
+        #corporateparking_parso_cr_1,
+        #corporateparking_parso_cr_2 {
+            margin: 5px;
+            padding: 5px;
+            border-radius: 5px;
+            border: 1px solid #ccc;
+        }
+
+        #refreshButton {
+            margin: 5px;
+            padding: 5px;
+            border-radius: 5px;
+            border: 1px solid #ccc;
+            background-color: #007bff;
+            color: white;
+        }
+
+        #loadingTasks {
+            margin: 20px;
+            padding: 20px;
+            background-color: white;
+            border-radius: 10px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+        }
+
+        #list {
+            list-style-type: none;
+            padding: 0;
+        }
+
+        #list li {
+            margin: 5px;
+            padding: 5px;
+
+        }
+
+        #validCredentialString {
+            margin: 5px;
+            padding: 5px;
+
+        }
+    </style>
 </head>
 
 <body>
+
+    <section id="chart" style="display:none">
+
     <!-- Crear un elemento canvas para el grafico -->
-    <canvas id="parkingChart" width="400" height="200"></canvas>
+        <canvas id="parkingChart" width="400" height="200"></canvas>
+    </section>
 
-    <!-- Campos de entrada para email y contrasena -->
-    <input id="corporateparking_parso_cr_1" type="email">
-    <input id="corporateparking_parso_cr_2" type="password">
-    <button id="refreshButton">Autenticar</button>
-    <span id="validCredentialString"> </span>
+    <section id="loginForm">
 
-    <div id="loadingTasks">
-        <ul id="list"></ul>
-    </div>
+        <!-- Campos de entrada para email y contrasena -->
+        <input id="corporateparking_parso_cr_1" type="email">
+        <input id="corporateparking_parso_cr_2" type="password">
+        <button id="refreshButton">Autenticar</button>
+        <span id="validCredentialString"> </span>
+
+        <div id="loadingTasks">
+            <ul id="list"></ul>
+        </div>
+
+    </section>
 
     <script>
         // Funcion para obtener las fechas de los proximos 10 dias habiles a partir de mañana
         function getNextWeekdays() {
             const dates = [];
-            
+
             // obtener la fecha de hoy a las 8 am
             const today = new Date();
             today.setHours(8, 0, 0, 0);
@@ -48,9 +124,9 @@
         }
 
         // obtiene la etiqueta de la columna en formato Dia de la semana y numero de dia
-        function getColumnLabel(date){
-            const days = ['Domingo','Lunes','Martes','Miercoles','Jueves','Viernes','Sabado'];
-            return days[date.getDay()] + ' ' + date.getDate();            
+        function getColumnLabel(date) {
+            const days = ['Domingo', 'Lunes', 'Martes', 'Miercoles', 'Jueves', 'Viernes', 'Sabado'];
+            return days[date.getDay()] + ' ' + date.getDate();
         }
 
 
@@ -91,7 +167,7 @@
 
                 // crear item en la lista para indicar que esta cargando la data del dia
                 const item = document.createElement('li');
-                item.textContent = 'Cargando datos para el dia '+ getColumnLabel(date) +' (' + date.toISOString().split('T')[0] + ')';
+                item.textContent = 'Cargando datos para el dia ' + getColumnLabel(date) + ' (' + date.toISOString().split('T')[0] + ')';
                 document.getElementById('list').appendChild(item);
 
 
@@ -115,7 +191,7 @@
 
                     parkingData.push({
                         label: getColumnLabel(date),
-                        date: data.availables[0].date, 
+                        date: data.availables[0].date,
                         lots: lots
                     });
                 }
@@ -132,46 +208,46 @@
             const parkingData = await getParkingData();
 
 
-const labels = parkingData.map(item => item.label);
+            const labels = parkingData.map(item => item.label);
 
 
-const colors = ['rgba(25, 9, 13, 0.2)', 'rgba(255, 99, 132, 0.2)', 'rgba(54, 162, 235, 0.2)', 'rgba(255, 206, 86, 0.2)', 'rgba(33, 192, 192, 0.2)', 'rgba(153, 102, 255, 0.2)', 'rgba(255, 159, 64, 0.2)', 'rgba(100, 100, 100, 0.2)', 'rgba(190, 32, 23, 0.2)', 'rgba(66, 11, 11, 0.2)', 'rgba(75, 192, 1, 0.2)'];
+            const colors = ['rgba(0, 0, 0, 0.2)', 'rgba(50, 19, 37, 0.2)', 'rgba(95, 15, 64, 0.2)', 'rgba(154, 3, 30, 0.2)', 'rgba(179, 62, 44, 0.2)', 'rgba(149, 73, 56, 0.2)', 'rgba(118, 84, 68, 0.2)', 'rgba(76, 65, 73, 0.2)', 'rgba(33, 46, 77, 0.2)', 'rgba(39, 102, 56, 0.2)', 'rgba(45, 158, 34, 0.2)'];
 
 
 
-// Crear definicion de los datasets
-const firstElement = parkingData[0];
-const datasets = [];
+            // Crear definicion de los datasets
+            const firstElement = parkingData[0];
+            const datasets = [];
 
-for (const lot of Object.values(firstElement.lots)) {
-
-
-    datasets.push({
-        id: lot.parking_lot_id,
-        label: lot.name,
-        data: [],
-        backgroundColor: colors[lot.parking_lot_id],
-        borderColor: 'rgba(0, 0, 0, 1)',
-        borderWidth: 1
-    });
-}
+            for (const lot of Object.values(firstElement.lots)) {
 
 
- 
-// Alimentar cada dataset con datos para cada dia de la semana
-parkingData.forEach(item => {
-
-    //buscar el item dentro del arreglo que tenga el label que corresponde al item
-
-    for (let i = 0; i < datasets.length; i++) {
-        const data = item.lots[datasets[i].id];
-        if (data) {
-            datasets[i].data.push(data.total);
-        }
-    }
+                datasets.push({
+                    id: lot.parking_lot_id,
+                    label: lot.name,
+                    data: [],
+                    backgroundColor: colors[lot.parking_lot_id],
+                    borderColor: 'rgba(0, 0, 0, 1)',
+                    borderWidth: 1
+                });
+            }
 
 
-});
+
+            // Alimentar cada dataset con datos para cada dia de la semana
+            parkingData.forEach(item => {
+
+                //buscar el item dentro del arreglo que tenga el label que corresponde al item
+
+                for (let i = 0; i < datasets.length; i++) {
+                    const data = item.lots[datasets[i].id];
+                    if (data) {
+                        datasets[i].data.push(data.total);
+                    }
+                }
+
+
+            });
 
 
             const ctx = document.getElementById('parkingChart').getContext('2d');
@@ -193,6 +269,9 @@ parkingData.forEach(item => {
                     }
                 }
             });
+
+            document.getElementById("loginForm").style.display = "none";
+            document.getElementById("chart").style.display = "block"; 
         }
 
         function credentialsValid() {
@@ -231,10 +310,12 @@ parkingData.forEach(item => {
         // Renderizar el grafico al cargar la pagina si ya esta autenticado
         if (credentialsValid()) {
 
-            document.getElementById('refreshButton').enabled = false;
-            document.getElementById('validCredentialString').innerText = 'Credenciales validas hasta ' + new Date(parseInt(JSON.parse(localStorage.getItem('parso_token')).expiry) * 1000).toLocaleString();
-
+            const expiryDate = new Date(parseInt(JSON.parse(localStorage.getItem('parso_token')).expiry) * 1000);
             
+            document.getElementById('refreshButton').enabled = false;
+            document.getElementById('validCredentialString').innerText = 'Credenciales válidas hasta ' + getColumnLabel(expiryDate)+' ('+ expiryDate.toLocaleString()+')';
+
+
             renderChart();
 
 
