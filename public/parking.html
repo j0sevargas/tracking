@@ -100,7 +100,7 @@
     </section>
 
     <script>
-        // Funcion para obtener las fechas de los proximos 10 dias habiles a partir de mañana
+        // Funcion para obtener las fechas de los proximos 10 dias habiles a partir de maÃ±ana
         function getNextWeekdays() {
             const dates = [];
 
@@ -313,7 +313,7 @@
             const expiryDate = new Date(parseInt(JSON.parse(localStorage.getItem('parso_token')).expiry) * 1000);
             
             document.getElementById('refreshButton').enabled = false;
-            document.getElementById('validCredentialString').innerText = 'Credenciales válidas hasta ' + getColumnLabel(expiryDate)+' ('+ expiryDate.toLocaleString()+')';
+            document.getElementById('validCredentialString').innerText = 'Credenciales obtenidas expiran hasta el ' + getColumnLabel(expiryDate)+' ('+ expiryDate.toLocaleString()+')';
 
 
             renderChart();
