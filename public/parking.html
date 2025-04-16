@@ -5,10 +5,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Parking Tracking</title>
-    <!-- Incluir la libreria Chart.js -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <link rel="icon" type="image/svg+xml" href="img/parking.svg">
-    
+
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -81,7 +80,7 @@
 
     <section id="chart" style="display:none">
 
-    <!-- Crear un elemento canvas para el grafico -->
+        <!-- Crear un elemento canvas para el grafico -->
         <canvas id="parkingChart" width="400" height="200"></canvas>
     </section>
 
@@ -100,7 +99,7 @@
     </section>
 
     <script>
-        // Funcion para obtener las fechas de los proximos 10 dias habiles a partir de mañana
+        // Funcion para obtener las fechas de los proximos 10 dias habiles a partir de manana
         function getNextWeekdays() {
             const dates = [];
 
@@ -123,7 +122,7 @@
             return date.toISOString().split('T')[0] + 'T08:00:00.000Z';
         }
 
-        // obtiene la etiqueta de la columna en formato Dia de la semana y numero de dia
+        // obtiene la etiqueta de la columna en formato dia de la semana y numero de dia
         function getColumnLabel(date) {
             const days = ['Domingo', 'Lunes', 'Martes', 'Miercoles', 'Jueves', 'Viernes', 'Sabado'];
             return days[date.getDay()] + ' ' + date.getDate();
@@ -145,6 +144,17 @@
                 },
                 body: JSON.stringify({ email: email, password: password })
             });
+
+
+            //validar la respuesta
+            if (response.status !== 200) {
+                const item = document.createElement('li');
+                item.textContent = 'Error al iniciar sesion con el usuario ' + email;
+                document.getElementById('list').appendChild(item);
+                return;
+            }
+
+
             const jsonData = await response.json();
 
             const info = {
@@ -180,6 +190,31 @@
                         'expiry': tokens['expiry']
                     }
                 });
+
+
+                // validar la respuesta 200
+
+                if (response.status !== 200) {
+
+                    const item = document.createElement('li');
+                    item.textContent = 'Error al cargar datos para el dia ' + getColumnLabel(date) + ' (' + date.toISOString().split('T')[0] + ')';
+                    document.getElementById('list').appendChild(item);
+
+                    // Si el token ya no es valido, borrarlo y habilitar el boton de refrescar
+                    if (response.status === 401) {
+                        localStorage.removeItem('parso_token');
+                        document.getElementById('refreshButton').enabled = true;
+
+                        const item = document.createElement('li');
+                        item.textContent = 'Credenciales invalidas, por favor autentique de nuevo';
+                        document.getElementById('list').appendChild(item);
+                        break;
+                    } else {
+                        continue;
+                    }
+
+                }
+
                 const data = await response.json();
 
                 if (data.success === true) {
@@ -221,6 +256,12 @@
 
             for (const lot of Object.values(firstElement.lots)) {
 
+
+                // color especial para lotes que inicien con "B10"
+                if (lot.name.startsWith('B10')) {
+                    // replace 0.2 with 1
+                    colors[lot.parking_lot_id] = colors[lot.parking_lot_id].replace('0.2', '1');
+                }
 
                 datasets.push({
                     id: lot.parking_lot_id,
@@ -271,7 +312,7 @@
             });
 
             document.getElementById("loginForm").style.display = "none";
-            document.getElementById("chart").style.display = "block"; 
+            document.getElementById("chart").style.display = "block";
         }
 
         function credentialsValid() {
@@ -311,9 +352,9 @@
         if (credentialsValid()) {
 
             const expiryDate = new Date(parseInt(JSON.parse(localStorage.getItem('parso_token')).expiry) * 1000);
-            
+
             document.getElementById('refreshButton').enabled = false;
-            document.getElementById('validCredentialString').innerText = 'Credenciales obtenidas expiran hasta el ' + getColumnLabel(expiryDate)+' ('+ expiryDate.toLocaleString()+')';
+            document.getElementById('validCredentialString').innerText = 'Credenciales obtenidas expiran hasta el ' + getColumnLabel(expiryDate) + ' (' + expiryDate.toLocaleString() + ')';
 
 
             renderChart();
