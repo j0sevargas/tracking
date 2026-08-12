@@ -73,16 +73,137 @@
             padding: 5px;
 
         }
+
+        #reservationsSection {
+            margin: 20px;
+            padding: 20px;
+            background-color: white;
+            border-radius: 10px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+        }
+
+        #reservationsSection h2 {
+            margin-top: 0;
+            font-size: 1.1rem;
+            color: #333;
+        }
+
+        #reservationsTable {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.9rem;
+        }
+
+        #reservationsTable th,
+        #reservationsTable td {
+            border: 1px solid #ddd;
+            padding: 8px 12px;
+            text-align: left;
+        }
+
+        #reservationsTable th {
+            background-color: #007bff;
+            color: white;
+        }
+
+        #reservationsTable tr:nth-child(even) {
+            background-color: #f9f9f9;
+        }
+
+        .status-APPROVED { color: #28a745; font-weight: bold; }
+        .status-PENDING  { color: #ffc107; font-weight: bold; }
+        .status-REJECTED { color: #dc3545; font-weight: bold; }
+
+        .btn-delete {
+            background-color: #dc3545;
+            color: white;
+            border: none;
+            padding: 4px 10px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.85rem;
+        }
+
+        #modalOverlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.5);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+        }
+        #modalOverlay.active { display: flex; }
+        #modalDialog {
+            background: white;
+            border-radius: 10px;
+            padding: 24px 28px;
+            min-width: 320px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+        }
+        #modalDialog h3 { margin-top: 0; }
+        #modalDialog .modal-actions { margin-top: 16px; display: flex; gap: 8px; justify-content: flex-end; }
+        #btnConfirmReservation {
+            background-color: #28a745;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        #btnCancelModal {
+            background-color: #6c757d;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        #parkingChart { cursor: pointer; }
     </style>
 </head>
 
 <body>
 
-    <section id="chart" style="display:none">
+    <section id="reservationsSection" style="display:none">
+        <h2>Reservas existentes</h2>
+        <table id="reservationsTable">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Fecha</th>
+                    <th>Estado</th>
+                    <th>Razón</th>
+                    <th>Espacio</th>
+                    <th>Parqueo</th>
+                    <th>Placa</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody id="reservationsBody"></tbody>
+        </table>
+    </section>
 
+    <section id="chart" style="display:none">
         <!-- Crear un elemento canvas para el grafico -->
         <canvas id="parkingChart" width="400" height="200"></canvas>
     </section>
+
+    <div id="modalOverlay">
+        <div id="modalDialog">
+            <h3>Reservar espacio</h3>
+            <p id="modalInfo"></p>
+            <label for="reservationReason">Razón:</label>
+            <input id="reservationReason" type="text" value="Jornada Laboral" style="width:100%;margin:6px 0 12px;padding:6px;border-radius:5px;border:1px solid #ccc;box-sizing:border-box">
+            <label for="vehicleSelect">Vehículo:</label>
+            <select id="vehicleSelect" style="width:100%;margin:6px 0 12px;padding:6px;border-radius:5px;border:1px solid #ccc;"></select>
+            <p id="modalError" style="color:#dc3545;display:none"></p>
+            <div class="modal-actions">
+                <button id="btnCancelModal">Cancelar</button>
+                <button id="btnConfirmReservation">Confirmar reserva</button>
+            </div>
+        </div>
+    </div>
 
     <section id="loginForm">
 
@@ -99,6 +220,11 @@
     </section>
 
     <script>
+
+        const SATURDAY = 6;
+        const SUNDAY = 0;
+        let allParkingData = [];
+
         // Funcion para obtener las fechas de los proximos 10 dias habiles a partir de manana
         function getNextWeekdays() {
             const dates = [];
@@ -107,10 +233,10 @@
             const today = new Date();
             today.setHours(8, 0, 0, 0);
 
-            while (dates.length < 10) {
+            while (dates.length < 12) {
                 today.setDate(today.getDate() + 1);
 
-                if (today.getDay() !== 0 && today.getDay() !== 6) { // Excluir fines de semana
+                if (today.getDay() !== SUNDAY && today.getDay() !== SATURDAY) { // Excluir fines de semana
                     dates.push(new Date(today));
                 }
             }
@@ -118,14 +244,33 @@
         }
 
         // Funcion para formatear la fecha en el formato requerido por la API
-        function formatDate(date) {
-            return date.toISOString().split('T')[0] + 'T08:00:00.000Z';
+        function getStartOfDay(date) {
+            // Las 8:00 de la manana GMT-6 en formato ISO 8601
+            return date.toISOString().split('T')[0] + 'T14:00:00.000Z';
         }
 
         // obtiene la etiqueta de la columna en formato dia de la semana y numero de dia
         function getColumnLabel(date) {
             const days = ['Domingo', 'Lunes', 'Martes', 'Miercoles', 'Jueves', 'Viernes', 'Sabado'];
             return days[date.getDay()] + ' ' + date.getDate();
+        }
+
+        function formatDateWithIndicator(dateStr) {
+            const hasTime = dateStr.includes('T') || dateStr.includes(' ');
+            const date = new Date(hasTime ? dateStr : dateStr + 'T14:00:00.000Z'); // 8:00 a. m. GMT-6
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            const dateOnly = new Date(date);
+            dateOnly.setHours(0, 0, 0, 0);
+            const diffDays = Math.round((dateOnly - today) / 86400000);
+            let indicator;
+            if (diffDays === 0) indicator = 'Hoy';
+            else if (diffDays === 1) indicator = 'Mañana';
+            else if (diffDays === -1) indicator = 'Ayer';
+            else if (diffDays > 0) indicator = `En ${diffDays} días`;
+            else indicator = `Hace ${Math.abs(diffDays)} días`;
+            const timeStr = date.toLocaleTimeString('es-CR', { hour: '2-digit', minute: '2-digit' });
+            return `${dateStr} ${timeStr} <small style="color:#888">(${indicator})</small>`;
         }
 
 
@@ -173,7 +318,7 @@
             const parkingData = [];
             const tokens = JSON.parse(localStorage.getItem('parso_token'));
             for (const date of dates) {
-                const formattedDate = formatDate(date);
+                const formattedDate = getStartOfDay(date);
 
                 // crear item en la lista para indicar que esta cargando la data del dia
                 const item = document.createElement('li');
@@ -203,7 +348,7 @@
                     // Si el token ya no es valido, borrarlo y habilitar el boton de refrescar
                     if (response.status === 401) {
                         localStorage.removeItem('parso_token');
-                        document.getElementById('refreshButton').enabled = true;
+                        document.getElementById('refreshButton').disabled = false;
 
                         const item = document.createElement('li');
                         item.textContent = 'Credenciales invalidas, por favor autentique de nuevo';
@@ -236,18 +381,57 @@
             return parkingData;
         }
 
+let count = 1;
+
+function stringToRgb(text) {
+  let hash = 0;
+
+
+  // pasar text a un hashcode como el de java
+  
+  text = text + count +"0" + count +"0"+ count +"0"+ count;
+  count++;  
+
+  for (let i = 0; i < text.length; i++) {
+    hash = text.charCodeAt(i) + ((hash << 5) - hash);
+    hash |= 0; // Fuerza a entero de 32 bits
+  }
+
+  const r = (hash >> 16) & 255;
+  const g = (hash >> 8) & 255;
+  const b = hash & 255;
+
+  return `rgb(${Math.abs(r)}, ${Math.abs(g)}, ${Math.abs(b)})`;
+}
+
         // Funcion para configurar y mostrar el grafico
         async function renderChart() {
 
 
             const parkingData = await getParkingData();
+            allParkingData = parkingData;
 
 
+            // ARREGLO DE COLORES DISTINTOS PARA CADA LOTE DE PARQUEO
+            const colors = [
+                'rgba(255, 99, 132, 0.2)',
+                'rgba(54, 162, 235, 0.2)',
+                'rgba(255, 206, 86, 0.2)',
+                'rgba(75, 192, 192, 0.2)',
+                'rgba(153, 102, 255, 0.2)',
+                'rgba(255, 159, 64, 0.2)',
+                'rgba(255, 99, 132, 0.2)',
+                'rgba(54, 162, 235, 0.2)',
+                'rgba(255, 206, 86, 0.2)',
+                'rgba(75, 192, 192, 0.2)',
+                'rgba(153, 102, 255, 0.2)',
+                'rgba(255, 159, 64, 0.2)'
+            ];
+
+            
+
+                                                      
             const labels = parkingData.map(item => item.label);
-
-
-            const colors = ['rgba(0, 0, 0, 0.2)', 'rgba(50, 19, 37, 0.2)', 'rgba(95, 15, 64, 0.2)', 'rgba(154, 3, 30, 0.2)', 'rgba(179, 62, 44, 0.2)', 'rgba(149, 73, 56, 0.2)', 'rgba(118, 84, 68, 0.2)', 'rgba(76, 65, 73, 0.2)', 'rgba(33, 46, 77, 0.2)', 'rgba(39, 102, 56, 0.2)', 'rgba(45, 158, 34, 0.2)'];
-
 
 
             // Crear definicion de los datasets
@@ -256,18 +440,19 @@
 
             for (const lot of Object.values(firstElement.lots)) {
 
+                // convertir nombre del lote en un numero hash
+                let hash = (lot.name.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0)) % 12;
 
-                // color especial para lotes que inicien con "B10"
-                if (lot.name.startsWith('B10')) {
-                    // replace 0.2 with 1
-                    colors[lot.parking_lot_id] = colors[lot.parking_lot_id].replace('0.2', '1');
-                }
 
+
+                // cambia el nombre del lote en un numero entre 0 y 11 para que sea mas facil de leer en la leyenda del grafico
+                let colorIndex = hash % colors.length;
+            
                 datasets.push({
                     id: lot.parking_lot_id,
                     label: lot.name,
                     data: [],
-                    backgroundColor: colors[lot.parking_lot_id],
+                    backgroundColor: colors[colorIndex],
                     borderColor: 'rgba(0, 0, 0, 1)',
                     borderWidth: 1
                 });
@@ -299,6 +484,12 @@
                     datasets: datasets
                 },
                 options: {
+                    onClick: async (event, elements, chart) => {
+                        if (!elements.length) return;
+                        const { datasetIndex, index } = elements[0];
+                        const lot = chart.data.datasets[datasetIndex];
+                        await openReservationModal(lot.id, lot.label, allParkingData[index].date);
+                    },
                     scales: {
                         x: {
                             stacked: true
@@ -313,6 +504,163 @@
 
             document.getElementById("loginForm").style.display = "none";
             document.getElementById("chart").style.display = "block";
+
+            await renderReservations();
+        }
+
+        async function renderReservations() {
+            const tokens = JSON.parse(localStorage.getItem('parso_token'));
+            const response = await fetch('https://baclatam.corporateparking.parso.cr/api/reservations', {
+                headers: {
+                    'accept': 'application/json, text/plain, */*',
+                    'access-token': tokens['access-token'],
+                    'client': tokens['client'],
+                    'token-type': tokens['token-type'],
+                    'uid': tokens['uid']
+                },
+                method: 'GET',
+                mode: 'cors',
+                credentials: 'omit',
+                cache: 'no-store'
+            });
+
+            if (!response.ok) return;
+
+            const data = await response.json();
+            if (!data.success || !data.reservations) return;
+
+            const tbody = document.getElementById('reservationsBody');
+            tbody.innerHTML = '';
+
+            data.reservations.forEach(r => {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td>${r.id}</td>
+                    <td>${formatDateWithIndicator(r.reservation_date)}</td>
+                    <td><span class="status-${r.status}">${r.status}</span></td>
+                    <td>${r.reason}</td>
+                    <td>${r.parking_space?.parking_space_label ?? ''}</td>
+                    <td>${r.parking_space?.parking_lot_name ?? ''}</td>
+                    <td>${r.vehicle?.license_plate ?? ''}</td>
+                    <td><button class="btn-delete" data-id="${r.id}">Eliminar</button></td>
+                `;
+                tbody.appendChild(tr);
+            });
+
+            tbody.querySelectorAll('.btn-delete').forEach(btn => {
+                btn.addEventListener('click', () => deleteReservation(parseInt(btn.dataset.id)));
+            });
+
+            document.getElementById('reservationsSection').style.display = 'block';
+        }
+
+        async function deleteReservation(id) {
+            if (!confirm(`¿Eliminar reserva #${id}?`)) return;
+            const tokens = JSON.parse(localStorage.getItem('parso_token'));
+            const response = await fetch(`https://baclatam.corporateparking.parso.cr/api/parking_reservations/${id}`, {
+                method: 'DELETE',
+                headers: {
+                    'accept': 'application/json, text/plain, */*',
+                    'access-token': tokens['access-token'],
+                    'client': tokens['client'],
+                    'token-type': tokens['token-type'],
+                    'uid': tokens['uid']
+                },
+                mode: 'cors',
+                credentials: 'omit'
+            });
+            if (response.ok) {
+                await renderReservations();
+            } else {
+                alert('Error al eliminar la reserva.');
+            }
+        }
+
+        async function openReservationModal(lotId, lotName, date) {
+            document.getElementById('modalInfo').textContent =
+                `¿Reservar en "${lotName}" para el ${date} a las 08:00?`;
+            document.getElementById('modalError').style.display = 'none';
+            await fetchVehicles();
+            document.getElementById('modalOverlay').classList.add('active');
+            document.getElementById('btnConfirmReservation').onclick = () => makeReservation(lotId, date);
+        }
+
+        async function fetchVehicles() {
+            const tokens = JSON.parse(localStorage.getItem('parso_token'));
+            const response = await fetch('https://baclatam.corporateparking.parso.cr/api/vehicles', {
+                headers: {
+                    'accept': 'application/json, text/plain, */*',
+                    'access-token': tokens['access-token'],
+                    'client': tokens['client'],
+                    'token-type': tokens['token-type'],
+                    'uid': tokens['uid']
+                },
+                method: 'GET',
+                mode: 'cors',
+                credentials: 'omit'
+            });
+            const select = document.getElementById('vehicleSelect');
+            select.innerHTML = '';
+            if (!response.ok) return;
+            const data = await response.json();
+            if (!data.success || !data.vehicles) return;
+            data.vehicles.forEach(v => {
+                const option = document.createElement('option');
+                option.value = v.id;
+                let label = v.license_plate;
+                if (v.vehicle_type) label += ` (${v.vehicle_type})`;
+                if (v.vehicle_dimension > 0) label += ` · tamaño ${v.vehicle_dimension}`;
+                option.textContent = label;
+                select.appendChild(option);
+            });
+            const saved = localStorage.getItem('parso_vehicle_id');
+            if (saved) select.value = saved;
+            select.addEventListener('change', () => localStorage.setItem('parso_vehicle_id', select.value));
+        }
+
+        document.getElementById('btnCancelModal').addEventListener('click', () => {
+            document.getElementById('modalOverlay').classList.remove('active');
+        });
+
+        async function makeReservation(lotId, date) {
+            const tokens = JSON.parse(localStorage.getItem('parso_token'));
+            const selectedVehicleId = parseInt(document.getElementById('vehicleSelect').value);
+            if (!selectedVehicleId) {
+                document.getElementById('modalError').textContent = 'Seleccione un vehículo.';
+                document.getElementById('modalError').style.display = 'block';
+                return;
+            }
+            const body = {
+                parking_reservation: {
+                    parking_lot_id: lotId,
+                    reason: document.getElementById('reservationReason').value || 'Jornada Laboral',
+                    vehicle_id: selectedVehicleId,
+                    entry_time: '08:00'
+                },
+                dates: [date]
+            };
+            const response = await fetch('https://baclatam.corporateparking.parso.cr/api/parking_reservations/multiples', {
+                method: 'POST',
+                headers: {
+                    'accept': 'application/json, text/plain, */*',
+                    'content-type': 'application/json',
+                    'access-token': tokens['access-token'],
+                    'client': tokens['client'],
+                    'token-type': tokens['token-type'],
+                    'uid': tokens['uid']
+                },
+                body: JSON.stringify(body),
+                mode: 'cors',
+                credentials: 'omit'
+            });
+            if (response.ok) {
+                document.getElementById('modalOverlay').classList.remove('active');
+                await renderReservations();
+            } else {
+                const err = await response.json().catch(() => ({}));
+                document.getElementById('modalError').textContent = err.message || 'Error al realizar la reserva.';
+                document.getElementById('modalError').style.display = 'block';
+            }
         }
 
         function credentialsValid() {
