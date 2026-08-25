@@ -251,7 +251,7 @@
             const today = new Date();
             today.setHours(8, 0, 0, 0);
 
-            while (dates.length < 12) {
+            while (dates.length < 6) {
                 today.setDate(today.getDate() + 1);
 
                 if (today.getDay() !== SUNDAY && today.getDay() !== SATURDAY) { // Excluir fines de semana
@@ -333,16 +333,14 @@
         // Funcion para obtener los datos de disponibilidad de parqueos
         async function getParkingData() {
             const dates = getNextWeekdays();
-            const parkingData = [];
             const tokens = JSON.parse(localStorage.getItem('parso_token'));
-            for (const date of dates) {
+
+            const results = await Promise.all(dates.map(async date => {
                 const formattedDate = getStartOfDay(date);
 
-                // crear item en la lista para indicar que esta cargando la data del dia
                 const item = document.createElement('li');
                 item.textContent = 'Cargando datos para el dia ' + getColumnLabel(date) + ' (' + date.toISOString().split('T')[0] + ')';
                 document.getElementById('list').appendChild(item);
-
 
                 const response = await fetch(`https://baclatam.corporateparking.parso.cr/api/parking_spaces/availability?start_date=${formattedDate}&end_date=${formattedDate}&entry_time=08:00`, {
                     headers: {
@@ -354,49 +352,38 @@
                     }
                 });
 
-
-                // validar la respuesta 200
+                if (response.status === 401) {
+                    localStorage.removeItem('parso_token');
+                    document.getElementById('refreshButton').disabled = false;
+                    const errItem = document.createElement('li');
+                    errItem.textContent = 'Credenciales invalidas, por favor autentique de nuevo';
+                    document.getElementById('list').appendChild(errItem);
+                    return null;
+                }
 
                 if (response.status !== 200) {
-
-                    const item = document.createElement('li');
-                    item.textContent = 'Error al cargar datos para el dia ' + getColumnLabel(date) + ' (' + date.toISOString().split('T')[0] + ')';
-                    document.getElementById('list').appendChild(item);
-
-                    // Si el token ya no es valido, borrarlo y habilitar el boton de refrescar
-                    if (response.status === 401) {
-                        localStorage.removeItem('parso_token');
-                        document.getElementById('refreshButton').disabled = false;
-
-                        const item = document.createElement('li');
-                        item.textContent = 'Credenciales invalidas, por favor autentique de nuevo';
-                        document.getElementById('list').appendChild(item);
-                        break;
-                    } else {
-                        continue;
-                    }
-
+                    const errItem = document.createElement('li');
+                    errItem.textContent = 'Error al cargar datos para el dia ' + getColumnLabel(date) + ' (' + date.toISOString().split('T')[0] + ')';
+                    document.getElementById('list').appendChild(errItem);
+                    return null;
                 }
 
                 const data = await response.json();
-
                 if (data.success === true) {
                     const lots = [];
                     data.availables[0].availability.forEach(element => {
                         lots[element.parking_lot_id] = element;
                     });
-
-
-                    parkingData.push({
+                    return {
                         label: getColumnLabel(date),
                         date: data.availables[0].date,
                         lots: lots
-                    });
+                    };
                 }
+                return null;
+            }));
 
-
-            }
-            return parkingData;
+            return results.filter(Boolean);
         }
 
 let count = 1;
