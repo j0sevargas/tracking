@@ -205,6 +205,24 @@
         </div>
     </div>
 
+    <section id="autoReserveSection" style="display:none;margin:20px;padding:20px;background-color:white;border-radius:10px;box-shadow:0 0 10px rgba(0,0,0,0.1);">
+        <h2 style="margin-top:0;font-size:1.1rem;color:#333;">Auto-reserva semanal (B10)</h2>
+        <p style="font-size:0.85rem;color:#666;margin:0 0 10px 0;">Reserva automáticamente el mismo día de la próxima semana al iniciar sesión, si hay un espacio B10 libre. Sin acción si ya existe una reserva para esa fecha.</p>
+        <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:center;">
+            <label><input type="checkbox" id="auto_lunes"     data-day="1"> Lunes</label>
+            <label><input type="checkbox" id="auto_martes"    data-day="2"> Martes</label>
+            <label><input type="checkbox" id="auto_miercoles" data-day="3"> Miércoles</label>
+            <label><input type="checkbox" id="auto_jueves"    data-day="4"> Jueves</label>
+            <label><input type="checkbox" id="auto_viernes"   data-day="5"> Viernes</label>
+        </div>
+        <div style="margin-top:10px;">
+            <label style="font-size:0.85rem;">Vehículo por defecto:
+                <select id="autoReserveVehicleSelect" style="margin-left:6px;padding:4px 6px;border-radius:4px;border:1px solid #ccc;"></select>
+            </label>
+        </div>
+        <div id="autoReserveStatus" style="margin-top:8px;font-size:0.85rem;"></div>
+    </section>
+
     <section id="loginForm">
 
         <!-- Campos de entrada para email y contrasena -->
@@ -506,6 +524,8 @@ function stringToRgb(text) {
             document.getElementById("chart").style.display = "block";
 
             await renderReservations();
+            await fetchVehicles();
+            await runAutoReserve();
         }
 
         async function renderReservations() {
@@ -585,6 +605,27 @@ function stringToRgb(text) {
             document.getElementById('btnConfirmReservation').onclick = () => makeReservation(lotId, date);
         }
 
+        function refreshAutoReserveSection() {
+            const cached = JSON.parse(localStorage.getItem('parso_vehicles') || 'null');
+            const section = document.getElementById('autoReserveSection');
+            if (!cached || !cached.length) {
+                section.style.display = 'none';
+                return;
+            }
+            section.style.display = 'block';
+            const arSelect = document.getElementById('autoReserveVehicleSelect');
+            arSelect.innerHTML = '';
+            cached.forEach(v => {
+                const opt = document.createElement('option');
+                opt.value = v.id;
+                opt.textContent = v.label;
+                arSelect.appendChild(opt);
+            });
+            const saved = localStorage.getItem('parso_vehicle_id');
+            if (saved) arSelect.value = saved;
+            arSelect.onchange = () => localStorage.setItem('parso_vehicle_id', arSelect.value);
+        }
+
         async function fetchVehicles() {
             const tokens = JSON.parse(localStorage.getItem('parso_token'));
             const response = await fetch('https://baclatam.corporateparking.parso.cr/api/vehicles', {
@@ -599,28 +640,189 @@ function stringToRgb(text) {
                 mode: 'cors',
                 credentials: 'omit'
             });
-            const select = document.getElementById('vehicleSelect');
-            select.innerHTML = '';
-            if (!response.ok) return;
-            const data = await response.json();
-            if (!data.success || !data.vehicles) return;
-            data.vehicles.forEach(v => {
-                const option = document.createElement('option');
-                option.value = v.id;
-                let label = v.license_plate;
-                if (v.vehicle_type) label += ` (${v.vehicle_type})`;
-                if (v.vehicle_dimension > 0) label += ` · tamaño ${v.vehicle_dimension}`;
-                option.textContent = label;
-                select.appendChild(option);
+            const modalSelect = document.getElementById('vehicleSelect');
+            modalSelect.innerHTML = '';
+            let vehicles = JSON.parse(localStorage.getItem('parso_vehicles') || '[]');
+            if (response.ok) {
+                const data = await response.json();
+                if (data.success && data.vehicles) {
+                    vehicles = data.vehicles.map(v => {
+                        let label = v.license_plate;
+                        if (v.vehicle_type) label += ` (${v.vehicle_type})`;
+                        if (v.vehicle_dimension > 0) label += ` · tamaño ${v.vehicle_dimension}`;
+                        return { id: v.id, label };
+                    });
+                    localStorage.setItem('parso_vehicles', JSON.stringify(vehicles));
+                }
+            }
+            vehicles.forEach(v => {
+                const opt = document.createElement('option');
+                opt.value = v.id;
+                opt.textContent = v.label;
+                modalSelect.appendChild(opt);
             });
             const saved = localStorage.getItem('parso_vehicle_id');
-            if (saved) select.value = saved;
-            select.addEventListener('change', () => localStorage.setItem('parso_vehicle_id', select.value));
+            if (saved) modalSelect.value = saved;
+            modalSelect.onchange = () => {
+                localStorage.setItem('parso_vehicle_id', modalSelect.value);
+                // Sync default to auto-reserve selector
+                const arSelect = document.getElementById('autoReserveVehicleSelect');
+                if (arSelect) arSelect.value = modalSelect.value;
+            };
+            refreshAutoReserveSection();
         }
 
         document.getElementById('btnCancelModal').addEventListener('click', () => {
             document.getElementById('modalOverlay').classList.remove('active');
         });
+
+        function loadAutoReserveSettings() {
+            const saved = JSON.parse(localStorage.getItem('parso_autoreserve_days') || '[]');
+            document.querySelectorAll('[data-day]').forEach(cb => {
+                cb.checked = saved.includes(parseInt(cb.dataset.day));
+                cb.addEventListener('change', saveAutoReserveSettings);
+            });
+            refreshAutoReserveSection();
+        }
+
+        function saveAutoReserveSettings() {
+            const enabled = Array.from(document.querySelectorAll('[data-day]:checked'))
+                .map(cb => parseInt(cb.dataset.day));
+            localStorage.setItem('parso_autoreserve_days', JSON.stringify(enabled));
+        }
+
+        function setAutoReserveStatus(msg, isError) {
+            const el = document.getElementById('autoReserveStatus');
+            el.textContent = msg;
+            el.style.color = isError ? '#dc3545' : '#28a745';
+        }
+
+        async function runAutoReserve() {
+            const today = new Date();
+            const todayDay = today.getDay(); // 0=Dom, 1=Lun … 6=Sáb
+
+            if (todayDay === 0 || todayDay === 6) return;
+
+            const enabledDays = JSON.parse(localStorage.getItem('parso_autoreserve_days') || '[]');
+            if (!enabledDays.includes(todayDay)) return;
+
+            // Próximo mismo día de semana = hoy + 7 días
+            const targetDate = new Date(today);
+            targetDate.setDate(today.getDate() + 7);
+            targetDate.setHours(8, 0, 0, 0);
+            const targetDateStr = targetDate.toISOString().split('T')[0];
+
+            setAutoReserveStatus('Verificando auto-reserva para ' + targetDateStr + '...');
+
+            const tokens = JSON.parse(localStorage.getItem('parso_token'));
+
+            // Verificar si ya existe una reserva para esa fecha
+            const resResponse = await fetch('https://baclatam.corporateparking.parso.cr/api/reservations', {
+                headers: {
+                    'accept': 'application/json, text/plain, */*',
+                    'access-token': tokens['access-token'],
+                    'client': tokens['client'],
+                    'token-type': tokens['token-type'],
+                    'uid': tokens['uid']
+                },
+                method: 'GET',
+                mode: 'cors',
+                credentials: 'omit',
+                cache: 'no-store'
+            });
+
+            if (!resResponse.ok) {
+                setAutoReserveStatus('Auto-reserva: error al verificar reservas existentes.', true);
+                return;
+            }
+
+            const resData = await resResponse.json();
+            if (resData.success && resData.reservations) {
+                const alreadyBooked = resData.reservations.some(r => {
+                    const rDate = (r.reservation_date || '').split('T')[0];
+                    return rDate === targetDateStr && r.status !== 'REJECTED';
+                });
+                if (alreadyBooked) {
+                    setAutoReserveStatus('Ya existe una reserva para el ' + targetDateStr + '. Sin acción.');
+                    return;
+                }
+            }
+
+            // Obtener disponibilidad para la fecha objetivo
+            const formattedDate = getStartOfDay(targetDate);
+            const availResponse = await fetch(
+                'https://baclatam.corporateparking.parso.cr/api/parking_spaces/availability?start_date=' + formattedDate + '&end_date=' + formattedDate + '&entry_time=08:00',
+                {
+                    headers: {
+                        'access-token': tokens['access-token'],
+                        'token-type': tokens['token-type'],
+                        'client': tokens['client'],
+                        'uid': tokens['uid'],
+                        'expiry': tokens['expiry']
+                    }
+                }
+            );
+
+            if (!availResponse.ok) {
+                setAutoReserveStatus('Auto-reserva: error al obtener disponibilidad.', true);
+                return;
+            }
+
+            const availData = await availResponse.json();
+            if (!availData.success || !availData.availables || !availData.availables[0]) {
+                setAutoReserveStatus('Auto-reserva: sin datos de disponibilidad.', true);
+                return;
+            }
+
+            // Primer lote con "B10" en el nombre que tenga espacios libres
+            const b10Lot = availData.availables[0].availability.find(
+                lot => lot.name.includes('B10') && lot.total > 0
+            );
+
+            if (!b10Lot) {
+                setAutoReserveStatus('No hay espacios B10 disponibles para el ' + targetDateStr + '.', true);
+                return;
+            }
+
+            const vehicleId = parseInt(document.getElementById('autoReserveVehicleSelect').value || '0');
+            if (!vehicleId) {
+                setAutoReserveStatus('Auto-reserva: no hay vehículo guardado. Reserve manualmente primero.', true);
+                return;
+            }
+
+            const body = {
+                parking_reservation: {
+                    parking_lot_id: b10Lot.parking_lot_id,
+                    reason: 'Jornada Laboral',
+                    vehicle_id: vehicleId,
+                    entry_time: '08:00'
+                },
+                dates: [availData.availables[0].date]
+            };
+
+            const reserveResponse = await fetch('https://baclatam.corporateparking.parso.cr/api/parking_reservations/multiples', {
+                method: 'POST',
+                headers: {
+                    'accept': 'application/json, text/plain, */*',
+                    'content-type': 'application/json',
+                    'access-token': tokens['access-token'],
+                    'client': tokens['client'],
+                    'token-type': tokens['token-type'],
+                    'uid': tokens['uid']
+                },
+                body: JSON.stringify(body),
+                mode: 'cors',
+                credentials: 'omit'
+            });
+
+            if (reserveResponse.ok) {
+                setAutoReserveStatus('✓ Auto-reserva realizada en "' + b10Lot.name + '" para el ' + targetDateStr + '.');
+                await renderReservations();
+            } else {
+                const err = await reserveResponse.json().catch(() => ({}));
+                setAutoReserveStatus('Error al auto-reservar: ' + (err.message || 'desconocido'), true);
+            }
+        }
 
         async function makeReservation(lotId, date) {
             const tokens = JSON.parse(localStorage.getItem('parso_token'));
@@ -695,6 +897,8 @@ function stringToRgb(text) {
             }
             renderChart();
         });
+
+        loadAutoReserveSettings();
 
         // Renderizar el grafico al cargar la pagina si ya esta autenticado
         if (credentialsValid()) {
